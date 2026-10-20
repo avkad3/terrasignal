@@ -4,7 +4,7 @@
 
 TerraSignal compares free Sentinel-1 radar imagery over time to map floods and other surface change. Radar sees through clouds, which matters because floods arrive under monsoon skies. The pipeline works for any bounding box on the planet. Curated case studies cover India and the rest of the world.
 
-> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline, U-Net water model, hybrid detector and calibrated confidence are done; packaging as one CLI/API command is next.
+> Status: Phase 1 in progress (flood mapping). Phase 1 pipeline complete: any bbox + dates → flood map, confidence, polygons, via CLI or HTTP API. Work in progress: making the model robust to calibration shifts in unseen regions.
 
 ## How it works
 
@@ -45,6 +45,7 @@ Why same-orbit pairs: radar backscatter depends on viewing geometry. Comparing a
 | `wayanad_2024` | India | Mundakkai landslide (a non-flood control case) |
 | `pakistan_2022` | Pakistan | Indus floods near Manchar Lake |
 | `derna_2023` | Libya | Storm Daniel dam-break flash flood (a hard case) |
+| `emilia_2023` | Italy | Emilia-Romagna floods (not in training; a generalization check) |
 
 ## First results (raw radar, before any model)
 
@@ -190,6 +191,50 @@ A probability is only useful if it means what it says. `train/calibrate.py` fits
 
 `terrasignal detect` now also writes `model_confidence.tif`, the per-pixel probability of *new* water, P(water after) × P(no water before), in %. The mean over each case's open-water flood tracks how clear the event is: Pakistan 84%, Assam 74%, Vijayawada 62%, Derna 54%. The orange "probable flood" class has no learned probability and is reported separately.
 
+## Analyze anywhere: CLI and API
+
+```bash
+terrasignal analyze --bbox 11.85 44.33 12.10 44.50 --before 2023-05-01 --after 2023-05-21 --name emilia
+terrasignal analyze --case vijayawada_2024            # reuses a cached stack
+
+uvicorn terrasignal.api:app --port 8000
+curl -X POST localhost:8000/analyze -H "Content-Type: application/json"      -d '{"bbox":[11.85,44.33,12.10,44.50],"before":"2023-05-01","after":"2023-05-21"}'
+curl localhost:8000/jobs/<job_id>                      # queued → running → done | failed
+curl -O localhost:8000/jobs/<job_id>/files/flood.geojson
+```
+
+Each run writes map-ready outputs:
+
+| File | Contents |
+|---|---|
+| `flood.tif` | COG, uint8 classes: 0 none · 1 open-water flood · 2 permanent water · 3 masked steep · 4 probable flood · 255 no data |
+| `confidence.tif` | COG, calibrated % probability of new open water |
+| `vv_before.tif`, `vv_after.tif` | COG backdrops for a before/after swipe (8-bit, −25 to 0 dB) |
+| `flood.geojson` | WGS84 polygons, one per flood region, with class, exact area (km², from the projected grid) and mean confidence |
+| `summary.json` | Scenes, dates, orbit, areas, model, timings, and **caveats written for this specific run** (heavy terrain masking, the heuristic class, flash floods) |
+
+Analysis runs as a job queue with a single worker, because one GPU and 8 GB of RAM fit one scene at a time. Bad boxes return 400. "No imagery" is reported as a failed job with the explanation, and the worker survives any exception. Output files are served from a fixed whitelist.
+
+Two bugs found while building this, both now covered by regression tests:
+- Polygon areas were **counted several times** (888 km² reported for 52 km²). Regions were labelled with 8-connectivity but traced with 4-connectivity, so one region became several polygons that each carried its full area.
+- The API path never imported `rioxarray`, so the first live API job failed. Mocked API tests can't catch that; a fresh-interpreter test now does.
+
+### First unseen area: Emilia-Romagna, May 2023
+
+Run through the live API: 135 s end to end (122 s fetch, 13 s detection and export) for 376 km², with the pair 2023-04-28 → 2023-05-22.
+
+- Most of the box is **+2.3 dB brighter** after the event. That's rain-soaked soil, not standing water, by 05-22.
+- One clearly flooded block in the north-east (VV −18 dB, VH −23 dB) was flagged, but mostly as *probable* flood: **the U-Net gave it P(water) ≈ 0.01.**
+
+Shifting the inputs darker shows why:
+
+| Input shift (dB) | −4 | −3 | −2 | −1 | **0** | +1 | +2 | +3 | +4 |
+|---|---|---|---|---|---|---|---|---|---|
+| Test IoU (seen countries) | 0.647 | 0.659 | 0.666 | 0.668 | **0.669** | 0.670 | 0.670 | 0.669 | 0.654 |
+| Bolivia IoU (unseen) | 0.721 | 0.716 | 0.679 | 0.660 | **0.642** | 0.598 | 0.478 | 0.343 | 0.278 |
+
+On familiar landscapes the model ignores absolute brightness. **On unfamiliar ones it falls back on "how dark is it", with a threshold that's too strict.** Planetary Computer γ⁰ reads brighter than the σ⁰ it trained on, which is the collapsing side of that curve. Picking a shift from Bolivia would be tuning on the test set, so the fix under way is to retrain with wider calibration augmentation (±4 dB instead of ±2), select on validation, and compare once.
+
 ## Quick start
 
 ```bash
@@ -212,7 +257,7 @@ Each run writes `data/<name>/` with one GeoTIFF per layer, `meta.json` (the scen
   - [x] 1.2 Otsu baseline with terrain and permanent-water masks
   - [x] 1.3 U-Net trained on Sen1Floods11, compared to the baseline per country
   - [x] 1.4 Calibrated confidence (temperature scaling; MC dropout tested and kept optional)
-  - [ ] 1.5 CLI and API that output COG, GeoJSON and stats
+  - [x] 1.5 CLI and API that output COG, GeoJSON and stats
 - **Phase 2:** interactive map with a before/after swipe
 - **Phase 3:** urban change detection (Sentinel-2, OSCD, Siamese network)
 - **Phase 4:** evaluation page and write-up

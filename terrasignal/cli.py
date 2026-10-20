@@ -123,6 +123,47 @@ def _detect(args) -> int:
     return 0
 
 
+def _analyze(args) -> int:
+    from .analyze import analyze, analyze_stack
+
+    if args.case:
+        cases = load_cases()
+        if args.case not in cases:
+            print(f"unknown case {args.case!r}; known: {', '.join(cases)}", file=sys.stderr)
+            return 2
+        c = cases[args.case]
+        bbox, before, after, name = c["bbox"], c["before"], c["after"], args.case
+    elif args.bbox and args.before and args.after:
+        bbox, name = args.bbox, args.name or "custom"
+        before, after = date.fromisoformat(args.before), date.fromisoformat(args.after)
+    else:
+        print("give --case, or all of --bbox, --before, --after", file=sys.stderr)
+        return 2
+    out = Path(args.out) if args.out else Path(args.data) / name / "analysis"
+    ckpt = None if args.method == "baseline" else Path(args.ckpt)
+    stack_dir = Path(args.data) / name
+    try:
+        if args.case and not args.refetch and (stack_dir / "meta.json").exists():
+            print(f"[{name}] reusing fetched stack in {stack_dir}")
+            s = analyze_stack(load_stack(stack_dir), out, ckpt, args.method)
+        else:
+            print(f"[{name}] fetching and analyzing…")
+            s = analyze(bbox, before, after, out, ckpt, args.method, args.window)
+    except (AOIError, NoPairError, ValueError, FileNotFoundError) as e:
+        print(f"[{name}] error: {e}", file=sys.stderr)
+        return 1
+    ar = s["areas_km2"]
+    conf = s["open_water_mean_confidence"]
+    conf_txt = f" ({conf:.0%} conf.)" if conf is not None else ""
+    prob_txt = f" + probable {ar['probable_flood']:.1f} km²" if ar.get("probable_flood") else ""
+    print(f"[{name}] {s['before']['date']} → {s['after']['date']} · {s['method']} · "
+          f"open-water flood {ar['open_water_flood']:.1f} km²{conf_txt}{prob_txt} · "
+          f"{s['polygons_written']} polygons → {out}")
+    for c in s["caveats"]:
+        print(f"  note: {c}")
+    return 0
+
+
 def _cuda() -> bool:
     import torch
     return torch.cuda.is_available()
@@ -150,8 +191,20 @@ def main(argv=None) -> int:
     d.add_argument("--case", required=True, help="case name, a custom --name, or 'all'")
     d.add_argument("--data", default=str(ROOT / "data"))
     d.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
+    a = sub.add_parser("analyze", help="fetch + detect + map-ready outputs (COG, GeoJSON, summary)")
+    a.add_argument("--case")
+    a.add_argument("--bbox", nargs=4, type=float, metavar=("W", "S", "E", "N"))
+    a.add_argument("--before")
+    a.add_argument("--after")
+    a.add_argument("--name")
+    a.add_argument("--method", choices=["auto", "hybrid", "baseline"], default="auto")
+    a.add_argument("--window", type=int, default=14)
+    a.add_argument("--refetch", action="store_true", help="ignore a cached stack for --case")
+    a.add_argument("--data", default=str(ROOT / "data"))
+    a.add_argument("--out")
+    a.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     args = ap.parse_args(argv)
-    return {"fetch": _fetch, "baseline": _baseline, "detect": _detect}[args.cmd](args)
+    return {"fetch": _fetch, "baseline": _baseline, "detect": _detect, "analyze": _analyze}[args.cmd](args)
 
 
 if __name__ == "__main__":

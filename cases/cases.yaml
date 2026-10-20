@@ -37,3 +37,10 @@ wayanad_2024:
   before: 2024-07-20
   after: 2024-08-01
   kind: landslide  # not a flood; checks the detector does not over-fire
+
+emilia_2023:
+  title: Emilia-Romagna floods near Lugo (Italy)
+  bbox: [11.85, 44.33, 12.10, 44.50]
+  before: 2023-05-01
+  after: 2023-05-21
+  kind: flood  # first area run through the API that no one had looked at; Italy is not in training
