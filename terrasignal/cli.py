@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from datetime import date
@@ -15,7 +16,8 @@ import yaml
 
 from .aoi import AOI, AOIError
 from .fetch import NoPairError, fetch_stack
-from .io import save_stack
+from .baseline import run_baseline
+from .io import flood_overlay, load_stack, save_classes, save_stack
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = ROOT / "cases" / "cases.yaml"
@@ -57,6 +59,35 @@ def _fetch(args) -> int:
     return 0
 
 
+def _baseline(args) -> int:
+    names = list(load_cases()) if args.case == "all" else [args.case]
+    data = Path(args.data)
+    for name in names:
+        folder = data / name
+        try:
+            ds = load_stack(folder)
+        except FileNotFoundError as e:
+            print(f"[{name}] {e}", file=sys.stderr)
+            return 1
+        t = time.time()
+        classes, stats = run_baseline(
+            ds.vv_before.values, ds.vv_after.values, ds.dem.values,
+            ds.jrc_occurrence.values, float(ds.attrs["resolution"]),
+        )
+        save_classes(classes, ds.vv_after, folder / "baseline_flood.tif")
+        (folder / "baseline_stats.json").write_text(json.dumps(stats, indent=2))
+        title = load_cases().get(name, {}).get("title", name)
+        flood_overlay(ds, classes, stats, title, folder / "baseline.png")
+        tb, ta = stats["threshold_before"], stats["threshold_after"]
+        print(
+            f"[{name}] flood {stats['flood_km2']:.2f} km² of {stats['valid_km2']:.0f} km² · "
+            f"thresholds {tb['value_db']:.1f} ({tb['method']},{tb['n_tiles']}) / "
+            f"{ta['value_db']:.1f} ({ta['method']},{ta['n_tiles']}) dB · "
+            f"steep {stats['masked_steep_fraction']:.0%} · {time.time() - t:.0f}s"
+        )
+    return 0
+
+
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
         if hasattr(stream, "reconfigure"):
@@ -72,8 +103,11 @@ def main(argv=None) -> int:
     f.add_argument("--resolution", type=float, default=10.0)
     f.add_argument("--window", type=int, default=14, help="days around each date to search")
     f.add_argument("--out", default=str(ROOT / "data"))
+    b = sub.add_parser("baseline", help="classical Otsu flood map for a fetched stack")
+    b.add_argument("--case", required=True, help="case name, a custom --name, or 'all'")
+    b.add_argument("--data", default=str(ROOT / "data"))
     args = ap.parse_args(argv)
-    return _fetch(args)
+    return {"fetch": _fetch, "baseline": _baseline}[args.cmd](args)
 
 
 if __name__ == "__main__":

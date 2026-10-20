@@ -4,7 +4,7 @@
 
 TerraSignal compares free Sentinel-1 radar imagery over time to map floods and other surface change. Radar sees through clouds, which matters because floods arrive under monsoon skies. The pipeline works for any bounding box on the planet. Curated case studies cover India and the rest of the world.
 
-> Status: Phase 1 in progress (flood mapping). The fetch pipeline is done; the baseline and the model are next.
+> Status: Phase 1 in progress (flood mapping). The fetch pipeline and the classical baseline are done; the learned model is next.
 
 ## How it works
 
@@ -62,6 +62,42 @@ Each panel row shows VV before, VV after, the change in dB, elevation, and perma
 ### Data gaps are real
 Cyclone Michaung flooded Chennai in December 2023, but Sentinel-1 recorded **no passes** over the city from 2023-11-25 to 2024-01-15. TerraSignal reports this instead of quietly pairing two pre-event images (a bug the first version had; see `test_after_never_drawn_from_before_window`).
 
+## Classical baseline
+
+The baseline is the bar the learned model has to beat:
+
+1. **Lee speckle filter** (7×7) on linear VV backscatter, ignoring missing pixels.
+2. **Split-based Otsu threshold.** A single global Otsu fails when water is a small part of the scene. Instead, the threshold is pooled from 256 px tiles whose histograms are clearly bimodal (Ashman's D > 2, each class ≥ 10%, the dark class water-like). It is clamped to the physically plausible range of −23 to −14 dB, and a scene with no qualifying tile falls back to −18 dB.
+3. **Flood** = water after, not water before, a VV drop of at least 3 dB, not permanent water (JRC occurrence ≥ 50%), and slope ≤ 5°.
+4. **Cleanup:** clusters smaller than 0.5 ha are removed.
+
+Slope comes from the Copernicus DEM smoothed to 30 m. The DEM is a *surface* model, so without smoothing, building edges look like cliffs and whole cities get masked as steep terrain.
+
+```bash
+terrasignal baseline --case all
+```
+
+| Case | Flood found | Valid area | Water threshold (before / after) | Masked as steep |
+|---|---|---|---|---|
+| Pakistan 2022 | **471 km²** | 1,775 km² | −14.2 / −14.2 dB | 6% |
+| Assam 2024 | **60 km²** | 1,341 km² | −14.0 / −14.3 dB | 1% |
+| Vijayawada 2024 | **42 km²** | 545 km² | −14.0 / −14.0 dB | 11% |
+| Derna 2023 | 0.04 km² | 161 km² | −14.0 / −14.0 dB | 37% |
+| Wayanad 2024 (control) | 0 km² | 110 km² | fallback −18 dB | 97% |
+
+![Pakistan baseline](docs/img/pakistan_2022_baseline.png)
+![Vijayawada baseline](docs/img/vijayawada_2024_baseline.png)
+![Assam baseline](docs/img/assam_2024_baseline.png)
+
+### Where the baseline fails (and what the model must fix)
+
+- **Dry sand looks like water.** Brahmaputra sandbars were dark in March, so the baseline treats channels that filled by June as "already water" and undercounts the river's spread.
+- **Water among buildings and vegetation is missed.** In Vijayawada's flooded neighbourhoods, backscatter sits around −12 dB because of double bounce, above the −14 dB threshold. The raw Otsu threshold there was −10.4 dB; only the clamp stopped it from flagging bare land.
+- **Rice paddies look like floods.** Fields flooded for transplanting in August–September show up as scattered false positives east of Vijayawada.
+- **Fast, rough floodwater gets brighter, not darker**, so the "dark = water" rule misses it (the Krishna river in Vijayawada).
+- **Flash floods recede before the next pass.** Derna's flood had drained by 2023-09-12, so there is no open water to find. Mapping its damage needs a different signal (loss of radar coherence).
+- **The Wayanad control passes mostly because 97% of it is masked as steep.** That's weak evidence that the baseline doesn't over-fire; Sen1Floods11 gives a real test in 1.3.
+
 ## Quick start
 
 ```bash
@@ -81,7 +117,7 @@ Each run writes `data/<name>/` with one GeoTIFF per layer, `meta.json` (the scen
 
 - **Phase 1: flood mapping**
   - [x] 1.1 Fetch any AOI with same-orbit pairing, aligned DEM and permanent water
-  - [ ] 1.2 Otsu baseline with terrain and permanent-water masks
+  - [x] 1.2 Otsu baseline with terrain and permanent-water masks
   - [ ] 1.3 U-Net trained on Sen1Floods11, compared to the baseline per country
   - [ ] 1.4 Calibrated confidence (MC dropout + temperature scaling)
   - [ ] 1.5 CLI and API that output COG, GeoJSON and stats

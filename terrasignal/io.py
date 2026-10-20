@@ -1,5 +1,4 @@
-"""Save a fetched stack to disk: one GeoTIFF per variable, metadata JSON,
-and a quicklook PNG for eyeballing."""
+"""Save and load stacks and results: GeoTIFFs, metadata JSON, quicklook PNGs."""
 from __future__ import annotations
 
 import json
@@ -9,10 +8,9 @@ import numpy as np
 import rioxarray  # noqa: F401  (registers the .rio accessor)
 import xarray as xr
 
+from .preprocess import to_db
 
-def to_db(linear: np.ndarray) -> np.ndarray:
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return 10 * np.log10(np.where(linear > 0, linear, np.nan))
+STACK_VARS = ["vv_before", "vh_before", "vv_after", "vh_after", "dem", "jrc_occurrence"]
 
 
 def save_stack(ds: xr.Dataset, out: Path) -> Path:
@@ -23,6 +21,25 @@ def save_stack(ds: xr.Dataset, out: Path) -> Path:
     (out / "meta.json").write_text(json.dumps(ds.attrs, indent=2, default=str))
     quicklook(ds, out / "quicklook.png")
     return out
+
+
+def load_stack(folder: Path) -> xr.Dataset:
+    missing = [v for v in STACK_VARS if not (folder / f"{v}.tif").exists()]
+    if missing:
+        raise FileNotFoundError(f"{folder} is missing {missing}; run `terrasignal fetch` first")
+    ds = xr.Dataset(
+        {v: rioxarray.open_rasterio(folder / f"{v}.tif", masked=False).squeeze("band", drop=True)
+         for v in STACK_VARS}
+    )
+    ds.attrs.update(json.loads((folder / "meta.json").read_text()))
+    return ds.load()
+
+
+def save_classes(classes: np.ndarray, template: xr.DataArray, path: Path) -> None:
+    da = template.copy(data=classes).astype("uint8")
+    da.attrs = {}
+    da = da.rio.write_nodata(255)
+    da.rio.to_raster(path, compress="deflate", tiled=True)
 
 
 def quicklook(ds: xr.Dataset, path: Path) -> None:
@@ -46,6 +63,45 @@ def quicklook(ds: xr.Dataset, path: Path) -> None:
         ax.axis("off")
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
     fig.suptitle(f"bbox {ds.attrs['bbox']}  ·  {ds.attrs['orbit_state']} orbit {ds.attrs['relative_orbit']}")
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+
+
+def flood_overlay(ds: xr.Dataset, classes: np.ndarray, stats: dict, title: str, path: Path) -> None:
+    """VV-after backdrop with flood in red and permanent water in blue."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    from .baseline import FLOOD, MASKED, PERMANENT
+
+    vva = to_db(ds.vv_after.values)
+    rgba = np.zeros(classes.shape + (4,), np.float32)
+    rgba[classes == FLOOD] = (0.9, 0.1, 0.1, 0.85)
+    rgba[classes == PERMANENT] = (0.1, 0.35, 0.9, 0.85)
+    rgba[classes == MASKED] = (1.0, 0.8, 0.2, 0.25)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+    axes[0].imshow(vva, cmap="gray", vmin=-25, vmax=0)
+    axes[0].set_title(f"VV after {ds.attrs['after_date']} (dB)")
+    axes[1].imshow(vva, cmap="gray", vmin=-25, vmax=0)
+    axes[1].imshow(rgba)
+    axes[1].set_title(f"Baseline flood: {stats['flood_km2']:.1f} km²")
+    axes[1].legend(
+        handles=[Patch(color=(0.9, 0.1, 0.1), label="new flood water"),
+                 Patch(color=(0.1, 0.35, 0.9), label="permanent water (JRC)"),
+                 Patch(color=(1.0, 0.8, 0.2), alpha=0.5, label="masked: slope > 5°")],
+        loc="lower right", fontsize=9, framealpha=0.85,
+    )
+    for ax in axes:
+        ax.axis("off")
+    tb, ta = stats["threshold_before"], stats["threshold_after"]
+    fig.suptitle(
+        f"{title}  ·  {ds.attrs['before_date']} → {ds.attrs['after_date']}  ·  "
+        f"water threshold {tb['value_db']:.1f} / {ta['value_db']:.1f} dB ({tb['method']} / {ta['method']})"
+    )
     fig.tight_layout()
     fig.savefig(path, dpi=110)
     plt.close(fig)
