@@ -4,8 +4,6 @@
 
 TerraSignal compares free Sentinel-1 radar imagery from before and after an event. Radar sees through clouds, which matters because floods arrive under monsoon skies. It works for any bounding box on the planet, from the command line or an HTTP API, and returns map-ready rasters, flood polygons with areas, and calibrated confidence.
 
-> **Status:** Phase 1 (flood mapping) is complete. Next is Phase 2, an interactive before/after map.
-
 ![Vijayawada, India 2024](docs/img/vijayawada_2024_hybrid.png)
 
 ## Results at a glance
@@ -186,19 +184,6 @@ The U-Net uses a ResNet34 encoder (ImageNet weights), takes VV and VH in dB, and
 > **GTX 16-series:** fp16 returns NaN on these cards (no tensor cores), so `amp_ok()` runs everything in fp32. That's also about 4× faster than the broken fp16 path.
 
 Result files: `docs/results_water_pc_on_pc.json`, `docs/results_water_v1_on_pc.json` (GEE model on PC), `docs/results_water.json` (GEE model on GEE), `docs/calibration_pc.json`, `docs/robustness_*.json`, `docs/domain_check_*.json`.
-
-## Roadmap
-
-- **Phase 1: flood mapping** ✅
-  - [x] Fetch any area with same-orbit pairing, aligned DEM and permanent water
-  - [x] Classical baseline
-  - [x] U-Net, trained and evaluated in the deployment domain
-  - [x] Calibrated confidence
-  - [x] CLI and HTTP API with COG, GeoJSON and summary outputs
-- **Phase 2:** interactive map with before/after swipe, polygons and confidence
-- **Phase 3:** urban change detection (Sentinel-2, OSCD, Siamese network)
-- **Phase 4:** evaluation page and write-up
-- **Phase 5:** foundation-model fine-tune (Prithvi) and an Earth Engine global overview
 
 ## Hardware
 
