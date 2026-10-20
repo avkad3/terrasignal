@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .model import amp_ok, logit_samples, normalize
+from .model import amp_ok, logit_samples, model_input_db, normalize
 from .preprocess import to_db
 
 
@@ -45,7 +45,7 @@ def water_probability(
     pad_h, pad_w = max(tile - H, 0), max(tile - W, 0)
     if pad_h or pad_w:
         db = np.pad(db, ((0, 0), (0, pad_h), (0, pad_w)), constant_values=np.nan)
-    x, valid = normalize(db, meta["mean"], meta["std"])
+    x, valid = normalize(model_input_db(db, meta), meta["mean"], meta["std"])
     Hp, Wp = x.shape[1:]
 
     model.eval()

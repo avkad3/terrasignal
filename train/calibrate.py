@@ -23,7 +23,7 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s1f11 import load_split  # noqa: E402
 
-from terrasignal.model import load_checkpoint, logit_samples, normalize  # noqa: E402
+from terrasignal.model import load_checkpoint, logit_samples, model_input_db, normalize  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 N_BINS = 15
@@ -33,12 +33,12 @@ MARKERS = {"raw": "o", "temperature": "s", "mc+temperature": "^"}
 
 
 @torch.no_grad()
-def collect(model, meta, split, device, mc_samples: int, temperature: float = 1.0):
+def collect(model, meta, split, device, mc_samples: int, temperature: float = 1.0, source: str = "gee"):
     """Per labeled pixel: deterministic logit, MC mean prob, MC std, label."""
-    s = load_split(split)
+    s = load_split(split, source)
     logits, mc_mean, mc_std, labels = [], [], [], []
     for x_db, y in zip(s.x, s.y):
-        xn, valid = normalize(x_db, meta["mean"], meta["std"])
+        xn, valid = normalize(model_input_db(x_db, meta), meta["mean"], meta["std"])
         xb = torch.from_numpy(xn)[None].to(device)
         det = logit_samples(model, xb)[0, 0].cpu().numpy()
         m = (y >= 0) & valid
@@ -161,6 +161,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     ap.add_argument("--mc", type=int, default=20)
+    ap.add_argument("--source", choices=["gee", "pc"], default="gee")
+    ap.add_argument("--tag", default="", help="suffix for docs outputs")
     ap.add_argument("--no-write", action="store_true", help="do not store T in the checkpoint")
     args = ap.parse_args()
 
@@ -168,13 +170,13 @@ def main() -> int:
     ckpt = Path(args.ckpt)
     model, meta = load_checkpoint(ckpt, device)
 
-    va = collect(model, meta, "valid", device, mc_samples=0)
+    va = collect(model, meta, "valid", device, mc_samples=0, source=args.source)
     T = fit_temperature(va["logit"], va["y"], device)
     print(f"temperature fitted on valid ({len(va['y']):,} px): T = {T:.3f}")
 
     results = {"temperature": round(T, 4), "mc_samples": args.mc}
     for split in ("test", "bolivia"):
-        d = collect(model, meta, split, device, mc_samples=args.mc, temperature=T)
+        d = collect(model, meta, split, device, mc_samples=args.mc, temperature=T, source=args.source)
         y = d["y"]
         p_raw = 1 / (1 + np.exp(-d["logit"]))
         p_t = 1 / (1 + np.exp(-d["logit"] / T))
@@ -196,8 +198,8 @@ def main() -> int:
               f"MC std {unc['auroc_mc_std']:.3f}  (error rate {unc['error_rate']:.3f})")
 
     (ROOT / "docs").mkdir(exist_ok=True)
-    (ROOT / "docs" / "calibration.json").write_text(json.dumps(results, indent=2))
-    plot(results, ROOT / "docs" / "img" / "reliability.png")
+    (ROOT / "docs" / f"calibration{args.tag}.json").write_text(json.dumps(results, indent=2))
+    plot(results, ROOT / "docs" / "img" / f"reliability{args.tag}.png")
 
     if not args.no_write:
         ck = torch.load(ckpt, map_location="cpu", weights_only=False)

@@ -26,12 +26,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     ap.add_argument("--out")
+    ap.add_argument("--source", choices=["gee", "pc"], default="gee")
     args = ap.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, meta = load_checkpoint(Path(args.ckpt), device)
     res = {}
     for split in ("test", "bolivia"):
-        s = load_split(split)
+        s = load_split(split, args.source)
         res[split] = {}
         for sh in SHIFTS:
             c = Counts()

@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s1f11 import load_split  # noqa: E402
 
-from terrasignal.model import CLIP_DB, amp_ok, build_model, normalize, save_checkpoint  # noqa: E402
+from terrasignal.model import CLIP_DB, amp_ok, build_model, model_input_db, normalize, save_checkpoint  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -34,9 +34,11 @@ def channel_stats(x: np.ndarray) -> tuple[list[float], list[float]]:
 
 
 class Chips(Dataset):
-    def __init__(self, x, y, mean, std, crop=None, augment=False, repeats=1, offset_db=2.0, seed=0):
+    def __init__(self, x, y, mean, std, crop=None, augment=False, repeats=1, offset_db=2.0,
+                 channel_jitter_db=0.5, seed=0):
         self.x, self.y, self.mean, self.std = x, y, mean, std
         self.crop, self.augment, self.repeats, self.offset_db = crop, augment, repeats, offset_db
+        self.channel_jitter_db = channel_jitter_db
         self.rng = np.random.default_rng(seed)
 
     def __len__(self):
@@ -54,11 +56,11 @@ class Chips(Dataset):
                     break
             x, y = x[:, r:r + self.crop, c:c + self.crop], yc
         if self.augment:
-            # Calibration shift: GEE sigma0 (training) vs RTC gamma0 (inference)
-            # differ by ~1 dB on flat ground. A shared random offset plus a small
-            # per-channel one keeps the model from keying on absolute levels.
+            # Calibration shift: GEE sigma0 (training) vs RTC gamma0 (inference).
+            # A shared random offset plus a per-channel one (VH over water reads
+            # ~3 dB brighter in RTC) keeps the model from keying on absolute levels.
             x = x + self.rng.uniform(-self.offset_db, self.offset_db)
-            x = x + self.rng.uniform(-0.5, 0.5, size=(2, 1, 1))
+            x = x + self.rng.uniform(-self.channel_jitter_db, self.channel_jitter_db, size=(2, 1, 1))
             k = self.rng.integers(4)
             x, y = np.rot90(x, k, axes=(1, 2)), np.rot90(y, k)
             if self.rng.random() < 0.5:
@@ -102,6 +104,10 @@ def main() -> int:
     ap.add_argument("--encoder", default="resnet34")
     ap.add_argument("--dropout", type=float, default=0.2)
     ap.add_argument("--offset-db", type=float, default=2.0)
+    ap.add_argument("--channel-jitter-db", type=float, default=0.5)
+    ap.add_argument("--lee", type=int, default=0, help="Lee filter size applied to inputs (0 = off)")
+    ap.add_argument("--source", choices=["gee", "pc", "both"], default="gee", help="training chips")
+    ap.add_argument("--valid-source", choices=["gee", "pc", "both"], help="validation chips (default: --source)")
     ap.add_argument("--out", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -110,13 +116,17 @@ def main() -> int:
     torch.backends.cudnn.benchmark = True
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t0 = time.time()
-    tr, va = load_split("train"), load_split("valid")
+    tr, va = load_split("train", args.source), load_split("valid", args.valid_source or args.source)
+    if args.lee:  # harmonize texture with the inference data (see model_input_db)
+        tr.x = np.stack([model_input_db(x, {"lee": args.lee}) for x in tr.x]).astype(np.float32)
+        va.x = np.stack([model_input_db(x, {"lee": args.lee}) for x in va.x]).astype(np.float32)
     mean, std = channel_stats(tr.x)
-    print(f"train {len(tr.ids)} chips, valid {len(va.ids)}; mean {np.round(mean, 2)} std {np.round(std, 2)}; "
+    print(f"[{args.source}/{args.valid_source or args.source}] train {len(tr.ids)} chips, valid {len(va.ids)}; mean {np.round(mean, 2)} std {np.round(std, 2)}; "
           f"water fraction {(tr.y == 1).sum() / (tr.y >= 0).sum():.3f}; loaded in {time.time() - t0:.0f}s", flush=True)
 
     train_dl = DataLoader(
-        Chips(tr.x, tr.y, mean, std, crop=args.crop, augment=True, repeats=4, offset_db=args.offset_db, seed=args.seed),
+        Chips(tr.x, tr.y, mean, std, crop=args.crop, augment=True, repeats=4, offset_db=args.offset_db,
+              channel_jitter_db=args.channel_jitter_db, seed=args.seed),
         batch_size=args.batch, shuffle=True, num_workers=0, drop_last=True,
     )
     valid_dl = DataLoader(Chips(va.x, va.y, mean, std), batch_size=2, num_workers=0)
@@ -156,6 +166,8 @@ def main() -> int:
                 save_checkpoint(Path(args.out), model, {
                     "encoder": args.encoder, "dropout": args.dropout, "mean": mean, "std": std,
                     "epoch": ep, "valid": v, "offset_db": args.offset_db, "trained_on": "sen1floods11-hand",
+                    "lee": args.lee, "channel_jitter_db": args.channel_jitter_db,
+                    "source": args.source, "valid_source": args.valid_source or args.source,
                 })
                 mark = " *"
             print(f"ep {ep:3d}  loss {np.mean(losses):.4f}  valid IoU {v['iou']:.4f} "

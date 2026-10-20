@@ -68,6 +68,18 @@ def logit_samples(model: nn.Module, x: torch.Tensor, mc_samples: int = 0, temper
     return out / temperature
 
 
+def model_input_db(db: np.ndarray, meta: dict) -> np.ndarray:
+    """Apply the checkpoint's input harmonization to a (2, H, W) dB stack.
+
+    GEE sigma0 (training) is noisy over water while Planetary Computer RTC is
+    smooth there; a shared Lee filter makes texture mean the same in both."""
+    size = int(meta.get("lee", 0) or 0)
+    if not size:
+        return db
+    from .preprocess import lee_filter, to_db
+    return np.stack([to_db(lee_filter(10 ** (c / 10), size)) for c in db])
+
+
 def normalize(db: np.ndarray, mean, std) -> tuple[np.ndarray, np.ndarray]:
     """db: (2, H, W) VV/VH in dB, NaN = missing. Returns (normalized float32
     with missing set to 0, valid mask)."""

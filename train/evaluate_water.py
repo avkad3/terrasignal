@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s1f11 import load_split  # noqa: E402
 
 from terrasignal.baseline import split_otsu  # noqa: E402
-from terrasignal.model import amp_ok, load_checkpoint, normalize  # noqa: E402
+from terrasignal.model import amp_ok, load_checkpoint, model_input_db, normalize  # noqa: E402
 from terrasignal.preprocess import lee_filter, to_db  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,7 +50,7 @@ def baseline_water(x_db: np.ndarray) -> np.ndarray:
 
 @torch.no_grad()
 def model_water(model, meta, x_db, device, shift_db=0.0) -> np.ndarray:
-    xn, valid = normalize(x_db + shift_db, meta["mean"], meta["std"])
+    xn, valid = normalize(model_input_db(x_db + shift_db, meta), meta["mean"], meta["std"])
     with torch.autocast("cuda", dtype=torch.float16, enabled=amp_ok(device)):
         logits = model(torch.from_numpy(xn)[None].to(device))[0, 0].float().cpu().numpy()
     return (logits > 0) & valid
@@ -60,6 +60,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     ap.add_argument("--out", default=str(ROOT / "docs" / "results_water.json"))
+    ap.add_argument("--source", choices=["gee", "pc"], default="gee")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -67,7 +68,7 @@ def main() -> int:
     methods = ["otsu_baseline", "unet", "unet_shift_+1dB"]
     results = {}
     for split in ["test", "bolivia"]:
-        s = load_split(split)
+        s = load_split(split, args.source)
         per = defaultdict(lambda: {m: Counts() for m in methods})
         for x, y, country in zip(s.x, s.y, s.countries):
             preds = {

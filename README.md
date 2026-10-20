@@ -100,6 +100,8 @@ terrasignal detect --case all     # U-Net (needs checkpoints/water_unet.pt)
 - **Flash floods recede before the next pass.** Derna's flood had drained by 2023-09-12, so there is no open water to find. Mapping its damage needs a different signal (loss of radar coherence).
 - **The Wayanad control passes mostly because 97% of it is masked as steep.** That's weak evidence that the baseline doesn't over-fire; Sen1Floods11 gives a real test in 1.3.
 
+> ⚠️ **Correction (Phase 1 audit):** the U-Net results in the next section were measured on Sen1Floods11's GEE imagery. On the **Planetary Computer RTC imagery TerraSignal actually runs on**, the same model scores far worse than the simple threshold (test IoU 0.263 vs 0.481; Bolivia 0.048 vs 0.450). See [The domain gap](#the-domain-gap-why-the-model-failed-on-real-data) for the cause and the fix.
+
 ## Learned water model (U-Net)
 
 A U-Net with a ResNet34 encoder (ImageNet weights) takes VV and VH in dB and outputs water probability. It is trained on the 252 hand-labeled Sen1Floods11 chips (10 countries) and validated on 89 more. Training uses:
@@ -234,6 +236,35 @@ Shifting the inputs darker shows why:
 | Bolivia IoU (unseen) | 0.721 | 0.716 | 0.679 | 0.660 | **0.642** | 0.598 | 0.478 | 0.343 | 0.278 |
 
 On familiar landscapes the model ignores absolute brightness. **On unfamiliar ones it falls back on "how dark is it", with a threshold that's too strict.** Planetary Computer γ⁰ reads brighter than the σ⁰ it trained on, which is the collapsing side of that curve. Picking a shift from Bolivia would be tuning on the test set, so the fix under way is to retrain with wider calibration augmentation (±4 dB instead of ±2), select on validation, and compare once.
+
+## The domain gap: why the model failed on real data
+
+Three clues pointed the same way: the U-Net missed a water-dark flooded block in Emilia-Romagna (P(water) ≈ 0.01), its Bolivia score swung from 0.72 to 0.28 with a ±4 dB brightness shift, and a check on the live data found it detected **0% of the permanent Krishna and Brahmaputra rivers** (JRC occurrence ≥ 90%). The inference pipeline wasn't at fault: run on the Sen1Floods11 test chips it reproduces the evaluation IoU exactly (0.6686).
+
+**The cause is texture, not brightness.**
+
+| | Water VV | Water VH | Texture over water (7×7 std) | Texture over land |
+|---|---|---|---|---|
+| Sen1Floods11, India (GEE σ⁰) | −19.6 dB | −25.5 dB | **2.53 dB, noisier than land** | 1.98 dB |
+| Planetary Computer RTC, Vijayawada | −18.6 dB | −22.2 dB | **1.63 dB, smoother than land** | 1.99 dB |
+
+Over water, unprocessed GEE imagery sits near the radar noise floor and looks *noisy*; Planetary Computer's RTC processing makes the same water *smooth*, with VH about 3 dB brighter. The CNN learned "water = dark and noisy". Wider brightness augmentation (±4 dB) didn't help, and neither did applying the same Lee filter to both sources: after filtering, GEE water is still noisier than land while RTC water is still smoother.
+
+**Measuring it properly.** Sen1Floods11's metadata gives each event's acquisition date, orbit direction and relative orbit. `train/build_pc_chips.py` rebuilds every hand-labeled chip from the *same acquisition* on Planetary Computer, on the chip's exact pixel grid:
+- 379 of 446 chips rebuilt; Paraguay isn't in Planetary Computer's archive
+- measured RTC − GEE VV offset: **+1.41 dB** median, matching γ⁰ vs σ⁰ theory
+- alignment: 9×9-smoothed VV correlation **0.954** median. Each chip is co-registered by its best integer shift (typically 0–2 px), and chips under 0.6 after shifting are dropped
+- the deployment-domain split: 204 train, 73 valid, 75 test, 15 Bolivia
+
+Scored on those chips (same hand labels, real deployment imagery):
+
+| | Otsu baseline | U-Net trained on GEE |
+|---|---|---|
+| Test, 9 countries | **0.481** | 0.263 |
+| India | **0.660** | 0.042 |
+| Bolivia | **0.450** | 0.048 |
+
+The threshold transfers because it adapts to each scene; the CNN doesn't. In practice that means the earlier hybrid maps leaned on the change-based "probable" class far more than they appeared to. Retraining on the rebuilt chips is in progress.
 
 ## Quick start
 
