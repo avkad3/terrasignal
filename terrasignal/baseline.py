@@ -94,7 +94,7 @@ class BaselineParams:
 
 
 # Output classes in flood.tif
-NO_FLOOD, FLOOD, PERMANENT, MASKED, NODATA = 0, 1, 2, 3, 255
+NO_FLOOD, FLOOD, PERMANENT, MASKED, PROBABLE, NODATA = 0, 1, 2, 3, 4, 255
 
 
 def run_baseline(

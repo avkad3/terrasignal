@@ -110,8 +110,9 @@ def _detect(args) -> int:
         save_classes(classes, ds.vv_after, folder / "model_flood.tif")
         (folder / "model_stats.json").write_text(json.dumps(stats, indent=2))
         title = load_cases().get(name, {}).get("title", name)
-        flood_overlay(ds, classes, stats, title, folder / "model.png", label="U-Net flood")
-        print(f"[{name}] flood {stats['flood_km2']:.2f} km² of {stats['valid_km2']:.0f} km² · "
+        flood_overlay(ds, classes, stats, title, folder / "model.png", label="Hybrid")
+        print(f"[{name}] open-water flood {stats['flood_km2']:.2f} km² + probable "
+              f"{stats['probable_flood_km2']:.2f} km² of {stats['valid_km2']:.0f} km² · "
               f"steep {stats['masked_steep_fraction']:.0%} · {time.time() - t:.0f}s")
     return 0
 

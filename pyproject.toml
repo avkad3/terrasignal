@@ -21,3 +21,6 @@ terrasignal = "terrasignal.cli:main"
 
 [tool.setuptools]
 packages = ["terrasignal"]
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]

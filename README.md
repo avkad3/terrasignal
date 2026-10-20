@@ -4,7 +4,7 @@
 
 TerraSignal compares free Sentinel-1 radar imagery over time to map floods and other surface change. Radar sees through clouds, which matters because floods arrive under monsoon skies. The pipeline works for any bounding box on the planet. Curated case studies cover India and the rest of the world.
 
-> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline and the U-Net water model are done; a hybrid detector and calibrated confidence are next.
+> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline, U-Net water model and the hybrid detector are done; calibrated confidence is next.
 
 ## How it works
 
@@ -147,7 +147,30 @@ Across the test set, precision rises from 0.72 to 0.82 and recall from 0.57 to 0
 **Vijayawada:** the U-Net **misses the flooded neighbourhoods** (3.4 km² vs the baseline's 42 km²). In that zone VV after the flood has a median of −13.5 dB, brighter than open water, because buildings and vegetation stick out of the water. VV dropped about 3 dB and VH about 4.6 dB, yet the model gives P(water) = 0.00. Sen1Floods11 labels come from optical imagery and mark open water, so the model learned "water = very dark".
 ![Vijayawada U-Net](docs/img/vijayawada_2024_unet.png)
 
-Hence the next step: a **hybrid detector**, with U-Net open-water flood at high confidence plus change-only "probable flood" for water among buildings and vegetation at lower confidence.
+## Hybrid detector (the default)
+
+`terrasignal detect` combines the two signals and keeps them apart in the output:
+
+| Class | Rule | Catches | Typical false positives |
+|---|---|---|---|
+| **Open-water flood** (red) | U-Net P(water) ≥ 0.5 after the event, not before | Rivers spreading, lakes overflowing, inundated fields | Few |
+| **Probable flood** (orange) | VV drops ≥ 2 dB **and** VH drops ≥ 3 dB **and** VH after ≤ −18 dB, outside open water | Water among buildings and vegetation, partly submerged fields | Paddy fields flooded for planting, wet soil |
+
+Both classes exclude permanent water and slopes over 5°, and drop clusters under 0.5 ha. The change thresholds are physics-motivated heuristics, **not fitted to labels**. No public dataset labels flooded-urban pixels in SAR, so they're checked visually on the case studies and should be treated as such.
+
+| Case | Baseline | U-Net only | Hybrid: open water + probable |
+|---|---|---|---|
+| Pakistan 2022 | 471 km² | 382 km² | 382 + 116 km² |
+| Assam 2024 | 60 km² | 190 km² | 190 + 19 km² |
+| Vijayawada 2024 | 42 km² | 3.4 km² | 3.4 + **52** km² |
+| Derna 2023 | 0.04 km² | 0.03 km² | 0.03 + 0.08 km² |
+| Wayanad 2024 (control) | 0 km² | 0 km² | 0 + 0 km² |
+
+**Vijayawada:** the flooded neighbourhoods that the U-Net missed are now mapped as probable flood.
+![Vijayawada hybrid](docs/img/vijayawada_2024_hybrid.png)
+
+**Pakistan:** open water around the lake and the Indus, with probable flood on the partly submerged floodplain between them.
+![Pakistan hybrid](docs/img/pakistan_2022_hybrid.png)
 
 ## Quick start
 

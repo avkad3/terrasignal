@@ -77,11 +77,12 @@ def flood_overlay(
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
 
-    from .baseline import FLOOD, MASKED, PERMANENT
+    from .baseline import FLOOD, MASKED, PERMANENT, PROBABLE
 
     vva = to_db(ds.vv_after.values)
     rgba = np.zeros(classes.shape + (4,), np.float32)
     rgba[classes == FLOOD] = (0.9, 0.1, 0.1, 0.85)
+    rgba[classes == PROBABLE] = (1.0, 0.55, 0.0, 0.75)
     rgba[classes == PERMANENT] = (0.1, 0.35, 0.9, 0.85)
     rgba[classes == MASKED] = (1.0, 0.8, 0.2, 0.25)
 
@@ -90,13 +91,16 @@ def flood_overlay(
     axes[0].set_title(f"VV after {ds.attrs['after_date']} (dB)")
     axes[1].imshow(vva, cmap="gray", vmin=-25, vmax=0)
     axes[1].imshow(rgba)
-    axes[1].set_title(f"{label}: {stats['flood_km2']:.1f} km²")
-    axes[1].legend(
-        handles=[Patch(color=(0.9, 0.1, 0.1), label="new flood water"),
-                 Patch(color=(0.1, 0.35, 0.9), label="permanent water (JRC)"),
-                 Patch(color=(1.0, 0.8, 0.2), alpha=0.5, label="masked: slope > 5°")],
-        loc="lower right", fontsize=9, framealpha=0.85,
-    )
+    probable = stats.get("probable_flood_km2")
+    title_txt = f"{label}: {stats['flood_km2']:.1f} km²"
+    handles = [Patch(color=(0.9, 0.1, 0.1), label="new open-water flood")]
+    if probable is not None:
+        title_txt += f" open water + {probable:.1f} km² probable"
+        handles.append(Patch(color=(1.0, 0.55, 0.0), label="probable flood (change only)"))
+    handles += [Patch(color=(0.1, 0.35, 0.9), label="permanent water (JRC)"),
+                Patch(color=(1.0, 0.8, 0.2), alpha=0.5, label="masked: slope > 5°")]
+    axes[1].set_title(title_txt)
+    axes[1].legend(handles=handles, loc="lower right", fontsize=9, framealpha=0.85)
     for ax in axes:
         ax.axis("off")
     sub = f"{title}  ·  {ds.attrs['before_date']} → {ds.attrs['after_date']}"
