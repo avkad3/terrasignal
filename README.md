@@ -62,7 +62,7 @@ curl localhost:8000/jobs/<job_id>                  # queued → running → done
 curl -O localhost:8000/jobs/<job_id>/files/flood.geojson
 ```
 
-Without a checkpoint at `checkpoints/water_unet.pt`, `analyze` falls back to the classical baseline and says so in the summary.
+**Trained model:** the weights are on Hugging Face at [avk3/terrasignal-water-unet](https://huggingface.co/avk3/terrasignal-water-unet), so there's no need to train anything. Add `--ckpt hf://avk3/terrasignal-water-unet` to `analyze` or `detect`, and it downloads once and is cached. Without any checkpoint, `analyze` falls back to the classical baseline and says so in the summary.
 
 | Output | Contents |
 |---|---|
