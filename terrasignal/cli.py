@@ -93,7 +93,7 @@ def _detect(args) -> int:
     from .detect import DetectParams, run_model
     from .model import load_checkpoint
 
-    model, meta = load_checkpoint(Path(args.ckpt), "cuda" if _cuda() else "cpu")
+    model, meta = load_checkpoint(args.ckpt, "cuda" if _cuda() else "cpu")
     names = list(load_cases()) if args.case == "all" else [args.case]
     for name in names:
         folder = Path(args.data) / name
@@ -140,7 +140,7 @@ def _analyze(args) -> int:
         print("give --case, or all of --bbox, --before, --after", file=sys.stderr)
         return 2
     out = Path(args.out) if args.out else Path(args.data) / name / "analysis"
-    ckpt = None if args.method == "baseline" else Path(args.ckpt)
+    ckpt = None if args.method == "baseline" else args.ckpt  # str: may be hf://user/repo
     stack_dir = Path(args.data) / name
     try:
         if args.case and not args.refetch and (stack_dir / "meta.json").exists():

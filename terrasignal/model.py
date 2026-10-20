@@ -95,9 +95,50 @@ def save_checkpoint(path: Path, model: nn.Module, meta: dict) -> None:
     torch.save({"state_dict": model.state_dict(), "meta": meta}, path)
 
 
-def load_checkpoint(path: Path, device: str = "cpu") -> tuple[nn.Module, dict]:
-    ck = torch.load(path, map_location=device, weights_only=False)
-    meta = ck["meta"]
+WEIGHTS_FILE, CONFIG_FILE = "model.safetensors", "config.json"
+
+
+def export_checkpoint(path: Path, out_dir: Path) -> None:
+    """Write weights as safetensors (no pickle, safe to load from anywhere)
+    plus the metadata as config.json."""
+    import json
+
+    from safetensors.torch import save_file
+
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    save_file({k: v.contiguous() for k, v in ck["state_dict"].items()}, out_dir / WEIGHTS_FILE)
+    (out_dir / CONFIG_FILE).write_text(json.dumps(ck["meta"], indent=2))
+
+
+def _resolve(path) -> Path:
+    """'hf://user/repo' or 'hf://user/repo/subfolder' -> local folder (downloaded and cached)."""
+    s = str(path)
+    if not s.startswith("hf://"):
+        return Path(path)
+    from huggingface_hub import hf_hub_download
+
+    parts = s[len("hf://"):].strip("/").split("/")
+    repo, sub = "/".join(parts[:2]), "/".join(parts[2:]) or None
+    cfg = hf_hub_download(repo, CONFIG_FILE, subfolder=sub)
+    hf_hub_download(repo, WEIGHTS_FILE, subfolder=sub)
+    return Path(cfg).parent
+
+
+def load_checkpoint(path, device: str = "cpu") -> tuple[nn.Module, dict]:
+    """Load from a training .pt file, an exported folder (model.safetensors +
+    config.json), or a Hugging Face repo given as hf://user/repo[/subfolder]."""
+    p = _resolve(path)
+    if p.is_dir():
+        import json
+
+        from safetensors.torch import load_file
+
+        meta = json.loads((p / CONFIG_FILE).read_text())
+        state = load_file(p / WEIGHTS_FILE)
+    else:
+        ck = torch.load(p, map_location="cpu", weights_only=False)
+        meta, state = ck["meta"], ck["state_dict"]
     m = build_model(meta.get("encoder", "resnet34"), weights=None, dropout=meta.get("dropout", 0.2))
-    m.load_state_dict(ck["state_dict"])
+    m.load_state_dict(state)
     return m.to(device).eval(), meta

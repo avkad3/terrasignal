@@ -30,3 +30,30 @@ def test_shift_nan_matches_roll_without_wraparound():
         ok = np.isfinite(s)
         assert ok.sum() == 2 * (6 - abs(dy)) * (7 - abs(dx))
         assert np.array_equal(s[ok], r[ok])
+
+
+def test_export_round_trip_is_exact(tmp_path):
+    from terrasignal.model import export_checkpoint, load_checkpoint, save_checkpoint
+    torch.manual_seed(0)
+    m = build_model("resnet18", weights=None, dropout=0.2).eval()
+    meta = {"encoder": "resnet18", "dropout": 0.2, "mean": [-10.0, -17.0], "std": [4.0, 4.5], "temperature": 1.5}
+    save_checkpoint(tmp_path / "m.pt", m, meta)
+    export_checkpoint(tmp_path / "m.pt", tmp_path / "export")
+    assert sorted(p.name for p in (tmp_path / "export").iterdir()) == ["config.json", "model.safetensors"]
+    m2, meta2 = load_checkpoint(tmp_path / "export")
+    x = torch.randn(1, 2, 64, 64)
+    with torch.no_grad():
+        assert torch.equal(m(x), m2(x))
+    assert meta2 == meta
+
+
+def test_hf_reference_parsing(monkeypatch):
+    import huggingface_hub
+    from terrasignal import model as tm
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download",
+                        lambda repo, fn, subfolder=None: calls.append((repo, fn, subfolder)) or f"/cache/{fn}")
+    tm._resolve("hf://someone/terrasignal-water/gee_baseline")
+    tm._resolve("hf://someone/terrasignal-water")
+    assert calls[0] == ("someone/terrasignal-water", "config.json", "gee_baseline")
+    assert calls[2] == ("someone/terrasignal-water", "config.json", None)

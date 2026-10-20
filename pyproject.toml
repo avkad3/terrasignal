@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ml = ["torch", "torchvision", "segmentation-models-pytorch"]
+ml = ["torch", "torchvision", "segmentation-models-pytorch", "safetensors", "huggingface_hub"]
 dev = ["pytest"]
 
 [project.scripts]

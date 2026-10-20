@@ -41,14 +41,17 @@ _detector_cache: dict = {}
 def load_detector(ckpt: Path | None = DEFAULT_CKPT):
     """(model, meta) or None when no checkpoint exists, in which case the
     classical baseline is used."""
-    if ckpt is None or not Path(ckpt).exists():
+    if ckpt is None:
         return None
-    key = str(Path(ckpt).resolve())
+    remote = str(ckpt).startswith("hf://")
+    if not remote and not Path(ckpt).exists():
+        return None
+    key = str(ckpt) if remote else str(Path(ckpt).resolve())
     if key not in _detector_cache:
         import torch
 
         from .model import load_checkpoint
-        _detector_cache[key] = load_checkpoint(Path(ckpt), "cuda" if torch.cuda.is_available() else "cpu")
+        _detector_cache[key] = load_checkpoint(key, "cuda" if torch.cuda.is_available() else "cpu")
     return _detector_cache[key]
 
 
