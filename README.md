@@ -4,7 +4,7 @@
 
 TerraSignal compares free Sentinel-1 radar imagery over time to map floods and other surface change. Radar sees through clouds, which matters because floods arrive under monsoon skies. The pipeline works for any bounding box on the planet. Curated case studies cover India and the rest of the world.
 
-> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline, U-Net water model and the hybrid detector are done; calibrated confidence is next.
+> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline, U-Net water model, hybrid detector and calibrated confidence are done; packaging as one CLI/API command is next.
 
 ## How it works
 
@@ -172,6 +172,24 @@ Both classes exclude permanent water and slopes over 5°, and drop clusters unde
 **Pakistan:** open water around the lake and the Indus, with probable flood on the partly submerged floodplain between them.
 ![Pakistan hybrid](docs/img/pakistan_2022_hybrid.png)
 
+## Calibrated confidence
+
+A probability is only useful if it means what it says. `train/calibrate.py` fits a single **temperature** on the validation split, then measures calibration on test and Bolivia, which are never used for fitting.
+
+| | ECE test | ECE Bolivia | NLL test | NLL Bolivia | Error-detection AUROC (test / Bolivia) |
+|---|---|---|---|---|---|
+| Raw U-Net | 0.032 | 0.041 | 0.167 | 0.211 | |
+| **Temperature, T = 1.55 (default)** | **0.015** | **0.016** | 0.135 | 0.176 | **0.90 / 0.89** (distance from 50%) |
+| 20× MC dropout + T | 0.018 | 0.017 | 0.134 | 0.177 | 0.85 / 0.75 (sample spread) |
+
+![Reliability diagram](docs/img/reliability.png)
+
+- **The raw model was overconfident** (T > 1). Temperature scaling halves the calibration error, including in Bolivia, the country it never saw.
+- **MC dropout didn't earn its cost.** It calibrates no better, and its sample spread flags errors *worse* than the calibrated probability's distance from 50%. A single dropout layer before the head captures little model uncertainty. The default is therefore one calibrated pass; `mc_samples` stays available. Sampling is cheap anyway, because only the 1×1 head is resampled (`logit_samples`).
+- **Known limitation:** after scaling, mid-range predictions on the test split (0.6–0.9) are still overconfident (0.77 predicted → 0.53 observed). The overall ECE is small because most pixels sit near 0 or 1, but flood *edges* live in that range. A single temperature can't fix that S-shape; isotonic or Platt calibration is the next thing to try.
+
+`terrasignal detect` now also writes `model_confidence.tif`, the per-pixel probability of *new* water, P(water after) × P(no water before), in %. The mean over each case's open-water flood tracks how clear the event is: Pakistan 84%, Assam 74%, Vijayawada 62%, Derna 54%. The orange "probable flood" class has no learned probability and is reported separately.
+
 ## Quick start
 
 ```bash
@@ -193,7 +211,7 @@ Each run writes `data/<name>/` with one GeoTIFF per layer, `meta.json` (the scen
   - [x] 1.1 Fetch any AOI with same-orbit pairing, aligned DEM and permanent water
   - [x] 1.2 Otsu baseline with terrain and permanent-water masks
   - [x] 1.3 U-Net trained on Sen1Floods11, compared to the baseline per country
-  - [ ] 1.4 Calibrated confidence (MC dropout + temperature scaling)
+  - [x] 1.4 Calibrated confidence (temperature scaling; MC dropout tested and kept optional)
   - [ ] 1.5 CLI and API that output COG, GeoJSON and stats
 - **Phase 2:** interactive map with a before/after swipe
 - **Phase 3:** urban change detection (Sentinel-2, OSCD, Siamese network)

@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 from torch import nn
 
-from .baseline import NO_FLOOD, PROBABLE, compose_flood, remove_small
+from .baseline import FLOOD, NO_FLOOD, PROBABLE, compose_flood, remove_small
 from .infer import water_probability
 from .preprocess import lee_filter, permanent_water, slope_degrees, to_db
 
@@ -59,6 +59,15 @@ def run_model(
     steep = ~(slope_degrees(dem, resolution) <= p.max_slope_deg)
 
     classes, stats = compose_flood(water_b, water_a, valid, perm, steep, resolution, p.min_area_m2)
+    # P(new water) = P(water after) * P(not water before), from temperature-
+    # calibrated probabilities. Only meaningful for the open-water class; the
+    # change-only class has no learned probability.
+    confidence = np.where(valid, prob_a * (1 - prob_b), np.nan).astype(np.float32)
+    flood_px = classes == FLOOD
+    stats["open_water_mean_confidence"] = (
+        round(float(np.nanmean(confidence[flood_px])), 3) if flood_px.any() else None
+    )
+    stats["temperature"] = float(meta.get("temperature", 1.0))
 
     stats["probable_flood_km2"] = 0.0
     if p.change:
@@ -69,5 +78,6 @@ def run_model(
         classes[probable] = PROBABLE
         stats["probable_flood_km2"] = round(float(probable.sum()) * px / 1e6, 3)
     stats.update(params=asdict(p), model={k: meta.get(k) for k in ("encoder", "epoch", "valid")})
-    layers = {"prob_before": prob_b, "prob_after": prob_a, "std_before": std_b, "std_after": std_a}
+    layers = {"prob_before": prob_b, "prob_after": prob_a, "std_before": std_b, "std_after": std_a,
+              "confidence": confidence}
     return classes, stats, layers

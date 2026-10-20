@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 # Inputs are VV and VH backscatter in dB. Statistics come from the
@@ -34,6 +35,37 @@ def build_model(encoder: str = "resnet34", weights: str | None = "imagenet", dro
     # MC dropout sample predictions at inference time.
     m.segmentation_head = nn.Sequential(nn.Dropout2d(dropout), m.segmentation_head)
     return m
+
+
+def logit_samples(model: nn.Module, x: torch.Tensor, mc_samples: int = 0, temperature: float = 1.0) -> torch.Tensor:
+    """Water logits, shape (S, B, H, W), divided by `temperature`.
+
+    mc_samples=0 gives one deterministic pass. Otherwise dropout stays on and
+    S = mc_samples. For our U-Net the dropout sits right before the 1x1 head,
+    so encoder and decoder run once and only the cheap head is resampled."""
+    head = getattr(model, "segmentation_head", None)
+    split = (
+        hasattr(model, "encoder") and hasattr(model, "decoder")
+        and isinstance(head, nn.Sequential) and isinstance(head[0], nn.Dropout2d)
+    )
+    if split:
+        dec = model.decoder(model.encoder(x))
+        if not mc_samples:
+            out = head[1](dec)[None]
+        else:
+            p = head[0].p
+            out = torch.stack([head[1](F.dropout2d(dec, p, training=True)) for _ in range(mc_samples)])
+        return out[:, :, 0] / temperature
+    # generic model: full forward passes, dropout layers switched on for MC
+    was = [(m, m.training) for m in model.modules() if isinstance(m, (nn.Dropout, nn.Dropout2d))]
+    for m, _ in was:
+        m.train(bool(mc_samples))
+    try:
+        out = torch.stack([model(x)[:, 0] for _ in range(max(mc_samples, 1))])
+    finally:
+        for m, t in was:
+            m.train(t)
+    return out / temperature
 
 
 def normalize(db: np.ndarray, mean, std) -> tuple[np.ndarray, np.ndarray]:

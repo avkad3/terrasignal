@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .model import amp_ok, normalize
+from .model import amp_ok, logit_samples, normalize
 from .preprocess import to_db
 
 
@@ -23,13 +23,6 @@ def _tiles(H: int, W: int, size: int, stride: int):
     if xs[-1] + size < W:
         xs.append(W - size)
     return [(y, x) for y in ys for x in xs]
-
-
-def _enable_mc_dropout(model: nn.Module) -> None:
-    model.eval()
-    for m in model.modules():
-        if isinstance(m, (nn.Dropout, nn.Dropout2d)):
-            m.train()
 
 
 @torch.no_grad()
@@ -55,12 +48,8 @@ def water_probability(
     x, valid = normalize(db, meta["mean"], meta["std"])
     Hp, Wp = x.shape[1:]
 
-    samples = max(mc_samples, 1)
-    if mc_samples:
-        _enable_mc_dropout(model)
-    else:
-        model.eval()
-
+    model.eval()
+    temperature = float(meta.get("temperature", 1.0))
     win = _window(tile)
     acc = np.zeros((Hp, Wp), np.float32)
     acc2 = np.zeros((Hp, Wp), np.float32) if mc_samples else None
@@ -69,20 +58,15 @@ def water_probability(
     for i in range(0, len(coords), batch):
         chunk = coords[i:i + batch]
         xb = torch.from_numpy(np.stack([x[:, y:y + tile, c:c + tile] for y, c in chunk])).to(device)
-        s1 = np.zeros((len(chunk), tile, tile), np.float32)
-        s2 = np.zeros_like(s1)
-        for _ in range(samples):
-            with torch.autocast("cuda", dtype=torch.float16, enabled=amp_ok(device)):
-                p = torch.sigmoid(model(xb)[:, 0].float()).cpu().numpy()
-            s1 += p
-            s2 += p * p
-        mean_t = s1 / samples
-        for (y, c), m, sq in zip(chunk, mean_t, s2 / samples):
+        with torch.autocast("cuda", dtype=torch.float16, enabled=amp_ok(device)):
+            p = torch.sigmoid(logit_samples(model, xb, mc_samples, temperature).float())
+        mean_t = p.mean(0).cpu().numpy()
+        std_t = p.std(0, unbiased=False).cpu().numpy() if mc_samples else [None] * len(chunk)
+        for (y, c), m, s in zip(chunk, mean_t, std_t):
             acc[y:y + tile, c:c + tile] += m * win
             if acc2 is not None:
-                acc2[y:y + tile, c:c + tile] += np.sqrt(np.maximum(sq - m * m, 0)) * win
+                acc2[y:y + tile, c:c + tile] += s * win
             wsum[y:y + tile, c:c + tile] += win
-    model.eval()
 
     prob = (acc / wsum)[:H, :W]
     prob[~valid[:H, :W]] = np.nan

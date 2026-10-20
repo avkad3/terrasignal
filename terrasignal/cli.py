@@ -12,6 +12,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 from .aoi import AOI, AOIError
@@ -108,10 +109,15 @@ def _detect(args) -> int:
             float(ds.attrs["resolution"]), DetectParams(),
         )
         save_classes(classes, ds.vv_after, folder / "model_flood.tif")
+        conf = layers["confidence"]
+        pct = np.where(np.isfinite(conf), np.round(np.nan_to_num(conf) * 100), 255).astype(np.uint8)
+        save_classes(pct, ds.vv_after, folder / "model_confidence.tif")  # % new-water probability
         (folder / "model_stats.json").write_text(json.dumps(stats, indent=2))
         title = load_cases().get(name, {}).get("title", name)
         flood_overlay(ds, classes, stats, title, folder / "model.png", label="Hybrid")
-        print(f"[{name}] open-water flood {stats['flood_km2']:.2f} km² + probable "
+        mc = stats["open_water_mean_confidence"]
+        print(f"[{name}] open-water flood {stats['flood_km2']:.2f} km²"
+              f"{f' (mean confidence {mc:.0%})' if mc is not None else ''} + probable "
               f"{stats['probable_flood_km2']:.2f} km² of {stats['valid_km2']:.0f} km² · "
               f"steep {stats['masked_steep_fraction']:.0%} · {time.time() - t:.0f}s")
     return 0
