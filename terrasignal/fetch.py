@@ -68,22 +68,34 @@ def group_passes(items: list[pystac.Item], aoi: AOI) -> list[Pass]:
 
 
 def pick_pair(
-    passes: list[Pass], before: date, after: date, min_coverage: float = MIN_COVERAGE
+    passes: list[Pass],
+    before: date,
+    after: date,
+    window_days: int = 14,
+    min_coverage: float = MIN_COVERAGE,
 ) -> tuple[Pass, Pass]:
     """Choose the after pass nearest `after`, then the same-geometry pass
-    nearest `before` that is strictly earlier. Pure function; no network."""
+    nearest `before` that is strictly earlier. Each role only draws from
+    passes within `window_days` of its own date. Pure function; no network."""
     ok = [p for p in passes if p.coverage >= min_coverage]
-    afters = sorted(ok, key=lambda p: abs((p.day - after).days))
+
+    def near(p: Pass, d: date) -> bool:
+        return abs((p.day - d).days) <= window_days
+
+    afters = sorted((p for p in ok if near(p, after)), key=lambda p: abs((p.day - after).days))
     for a in afters:
-        befores = [p for p in ok if p.key == a.key and p.day < a.day]
+        befores = [p for p in ok if p.key == a.key and p.day < a.day and near(p, before)]
         if befores:
             b = min(befores, key=lambda p: abs((p.day - before).days))
             return b, a
-    covered = sorted({round(p.coverage, 2) for p in passes}, reverse=True)[:3]
+    seen = ", ".join(
+        f"{p.day} {p.orbit_state[:3]}{p.relative_orbit} {p.coverage:.0%}"
+        for p in sorted(passes, key=lambda p: p.day)
+    )
     raise NoPairError(
-        f"no same-orbit Sentinel-1 pair covering ≥{min_coverage:.0%} of the AOI "
-        f"near {before} → {after} (best coverages found: {covered}); "
-        "try a wider date window or a smaller box"
+        f"no same-orbit Sentinel-1 pair covering ≥{min_coverage:.0%} of the AOI within "
+        f"±{window_days} days of {before} and {after}. Passes found: {seen or 'none'}. "
+        "Try a wider --window or a smaller box"
     )
 
 
@@ -97,13 +109,7 @@ def find_pair(
     items = list(_client().search(collections=[S1], bbox=aoi.bbox, datetime=rng).items())
     if not items:
         raise NoPairError(f"no Sentinel-1 scenes over the AOI in {rng}")
-    passes = group_passes(items, aoi)
-    # only consider passes within the window of each requested date
-    near = [
-        p for p in passes
-        if abs((p.day - before).days) <= window_days or abs((p.day - after).days) <= window_days
-    ]
-    return pick_pair(near, before, after)
+    return pick_pair(group_passes(items, aoi), before, after, window_days)
 
 
 def _load_s1(p: Pass, aoi: AOI, resolution: float, geobox=None) -> xr.Dataset:

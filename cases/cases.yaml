@@ -8,12 +8,14 @@ assam_2024:
   after: 2024-07-04
   kind: flood
 
-chennai_2023:
-  title: Cyclone Michaung floods, Chennai (India)
-  bbox: [80.15, 12.90, 80.30, 13.15]
-  before: 2023-11-20
-  after: 2023-12-05
+vijayawada_2024:
+  title: Budameru floods, Vijayawada (India)
+  bbox: [80.52, 16.45, 80.75, 16.65]
+  before: 2024-08-20
+  after: 2024-09-01
   kind: flood
+  # Chennai (Cyclone Michaung, Dec 2023) was the original pick, but Sentinel-1
+  # recorded no passes over it from 2023-11-25 to 2024-01-15.
 
 pakistan_2022:
   title: Indus floods near Manchar Lake, Sindh (Pakistan)

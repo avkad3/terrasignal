@@ -41,10 +41,26 @@ Why same-orbit pairs: radar backscatter depends on viewing geometry. Comparing a
 | Case | Region | Event |
 |---|---|---|
 | `assam_2024` | India | Brahmaputra monsoon floods |
-| `chennai_2023` | India | Cyclone Michaung urban flooding |
+| `vijayawada_2024` | India | Budameru urban floods |
 | `wayanad_2024` | India | Mundakkai landslide (a non-flood control case) |
 | `pakistan_2022` | Pakistan | Indus floods near Manchar Lake |
 | `derna_2023` | Libya | Storm Daniel dam-break flash flood (a hard case) |
+
+## First results (raw radar, before any model)
+
+Each panel row shows VV before, VV after, the change in dB, elevation, and permanent water. In the change panel, red means the backscatter dropped, which is typical of new open water.
+
+**Vijayawada, India, 2024:** the Budameru overflow floods the north-west of the city.
+![Vijayawada](docs/img/vijayawada_2024.png)
+
+**Sindh, Pakistan, 2022:** Manchar Lake spreads far past its permanent extent.
+![Pakistan](docs/img/pakistan_2022.png)
+
+**Wayanad, India, 2024 (landslide control case):** the debris track is the diagonal streak. The dark patches in both radar images are shadow on steep slopes, not water, which is why the elevation mask exists.
+![Wayanad](docs/img/wayanad_2024.png)
+
+### Data gaps are real
+Cyclone Michaung flooded Chennai in December 2023, but Sentinel-1 recorded **no passes** over the city from 2023-11-25 to 2024-01-15. TerraSignal reports this instead of quietly pairing two pre-event images (a bug the first version had; see `test_after_never_drawn_from_before_window`).
 
 ## Quick start
 

@@ -49,6 +49,14 @@ def test_pair_skips_low_coverage_and_falls_back():
     assert a.key == ("ascending", 12) and b.day == date(2024, 7, 1)
 
 
+def test_after_never_drawn_from_before_window():
+    # Regression: Chennai picked a pass near the *before* date as "after",
+    # so both images predated the cyclone.
+    passes = [P("descending", 92, "2023-11-06"), P("descending", 92, "2023-11-18")]
+    with pytest.raises(NoPairError, match="Passes found"):
+        pick_pair(passes, date(2023, 11, 20), date(2023, 12, 5), window_days=14)
+
+
 def test_no_pair():
     with pytest.raises(NoPairError):
         pick_pair([P("descending", 63, "2024-07-10")], date(2024, 7, 1), date(2024, 7, 10))
