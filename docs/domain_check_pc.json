@@ -1,0 +1,27 @@
+{
+  "assam_2024": {
+    "perm_px": 2442,
+    "perm_recall": 1.0,
+    "dry_fp_rate": 0.3063
+  },
+  "vijayawada_2024": {
+    "perm_px": 58482,
+    "perm_recall": 0.998,
+    "dry_fp_rate": 0.1232
+  },
+  "pakistan_2022": {
+    "perm_px": 1084098,
+    "perm_recall": 0.994,
+    "dry_fp_rate": 0.1032
+  },
+  "derna_2023": {
+    "perm_px": 463910,
+    "perm_recall": 1.0,
+    "dry_fp_rate": 0.076
+  },
+  "emilia_2023": {
+    "perm_px": 59,
+    "perm_recall": 1.0,
+    "dry_fp_rate": 0.0081
+  }
+}

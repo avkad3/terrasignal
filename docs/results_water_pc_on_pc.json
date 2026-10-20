@@ -1,0 +1,220 @@
+{
+  "test": {
+    "ALL": {
+      "otsu_baseline": {
+        "iou": 0.4813,
+        "precision": 0.8789,
+        "recall": 0.5155
+      },
+      "unet": {
+        "iou": 0.6828,
+        "precision": 0.8324,
+        "recall": 0.7917
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.6761,
+        "precision": 0.833,
+        "recall": 0.7821
+      }
+    },
+    "Ghana": {
+      "otsu_baseline": {
+        "iou": 0.4138,
+        "precision": 0.8734,
+        "recall": 0.4402
+      },
+      "unet": {
+        "iou": 0.5635,
+        "precision": 0.8801,
+        "recall": 0.6103
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.5674,
+        "precision": 0.8826,
+        "recall": 0.6138
+      }
+    },
+    "India": {
+      "otsu_baseline": {
+        "iou": 0.6604,
+        "precision": 0.9362,
+        "recall": 0.6915
+      },
+      "unet": {
+        "iou": 0.6846,
+        "precision": 0.8271,
+        "recall": 0.7989
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.6773,
+        "precision": 0.8354,
+        "recall": 0.7816
+      }
+    },
+    "Mekong": {
+      "otsu_baseline": {
+        "iou": 0.7092,
+        "precision": 0.9513,
+        "recall": 0.736
+      },
+      "unet": {
+        "iou": 0.7993,
+        "precision": 0.8466,
+        "recall": 0.9346
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.8079,
+        "precision": 0.8639,
+        "recall": 0.9258
+      }
+    },
+    "Nigeria": {
+      "otsu_baseline": {
+        "iou": 0.7498,
+        "precision": 0.9682,
+        "recall": 0.7687
+      },
+      "unet": {
+        "iou": 0.8895,
+        "precision": 0.9064,
+        "recall": 0.9794
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.8959,
+        "precision": 0.9154,
+        "recall": 0.9768
+      }
+    },
+    "Pakistan": {
+      "otsu_baseline": {
+        "iou": 0.0783,
+        "precision": 0.2688,
+        "recall": 0.0996
+      },
+      "unet": {
+        "iou": 0.3048,
+        "precision": 0.8842,
+        "recall": 0.3175
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.2825,
+        "precision": 0.8991,
+        "recall": 0.2918
+      }
+    },
+    "Somalia": {
+      "otsu_baseline": {
+        "iou": 0.1374,
+        "precision": 0.9643,
+        "recall": 0.1381
+      },
+      "unet": {
+        "iou": 0.5007,
+        "precision": 0.6972,
+        "recall": 0.6399
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.4451,
+        "precision": 0.6273,
+        "recall": 0.6052
+      }
+    },
+    "Spain": {
+      "otsu_baseline": {
+        "iou": 0.6084,
+        "precision": 0.9632,
+        "recall": 0.6229
+      },
+      "unet": {
+        "iou": 0.7204,
+        "precision": 0.8236,
+        "recall": 0.8518
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.7227,
+        "precision": 0.8331,
+        "recall": 0.8451
+      }
+    },
+    "Sri-Lanka": {
+      "otsu_baseline": {
+        "iou": 0.2057,
+        "precision": 0.9254,
+        "recall": 0.2092
+      },
+      "unet": {
+        "iou": 0.8372,
+        "precision": 0.8701,
+        "recall": 0.9568
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.8217,
+        "precision": 0.8513,
+        "recall": 0.9594
+      }
+    },
+    "USA": {
+      "otsu_baseline": {
+        "iou": 0.4302,
+        "precision": 0.6192,
+        "recall": 0.5849
+      },
+      "unet": {
+        "iou": 0.5598,
+        "precision": 0.6739,
+        "recall": 0.7678
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.568,
+        "precision": 0.6804,
+        "recall": 0.7747
+      }
+    }
+  },
+  "bolivia": {
+    "ALL": {
+      "otsu_baseline": {
+        "iou": 0.4504,
+        "precision": 0.7781,
+        "recall": 0.5168
+      },
+      "unet": {
+        "iou": 0.6555,
+        "precision": 0.7312,
+        "recall": 0.8637
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.6292,
+        "precision": 0.7459,
+        "recall": 0.8009
+      }
+    },
+    "Bolivia": {
+      "otsu_baseline": {
+        "iou": 0.4504,
+        "precision": 0.7781,
+        "recall": 0.5168
+      },
+      "unet": {
+        "iou": 0.6555,
+        "precision": 0.7312,
+        "recall": 0.8637
+      },
+      "unet_shift_+1dB": {
+        "iou": 0.6292,
+        "precision": 0.7459,
+        "recall": 0.8009
+      }
+    }
+  },
+  "checkpoint": {
+    "epoch": 48,
+    "valid": {
+      "iou": 0.7154767482763308,
+      "precision": 0.8435628033425792,
+      "recall": 0.8249319054254288
+    },
+    "encoder": "resnet34",
+    "offset_db": 2.0
+  }
+}

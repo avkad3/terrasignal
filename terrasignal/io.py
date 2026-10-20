@@ -109,6 +109,6 @@ def flood_overlay(
         sub += (f"  ·  water threshold {tb['value_db']:.1f} / {ta['value_db']:.1f} dB "
                 f"({tb['method']} / {ta['method']})")
     fig.suptitle(sub)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.95))  # keep the suptitle clear of panel titles
     fig.savefig(path, dpi=110)
     plt.close(fig)

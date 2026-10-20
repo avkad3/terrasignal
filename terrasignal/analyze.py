@@ -122,6 +122,9 @@ def caveats(stats: dict, method: str) -> list[str]:
     if stats.get("masked_steep_fraction", 0) > 0.5:
         out.append(f"{stats['masked_steep_fraction']:.0%} of the area is steep terrain and was masked; "
                    "no flood found there is not evidence of no flood.")
+    if stats.get("flood_km2"):
+        out.append("New open water includes any surface that became water, so rice paddies flooded for "
+                   "planting and waterlogged fields count too; check scattered field-shaped patches.")
     if stats.get("probable_flood_km2"):
         out.append("'Probable flood' comes from a backscatter-drop heuristic (water among buildings or "
                    "vegetation); it can also flag paddy fields being flooded for planting.")
