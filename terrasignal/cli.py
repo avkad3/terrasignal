@@ -88,6 +88,39 @@ def _baseline(args) -> int:
     return 0
 
 
+def _detect(args) -> int:
+    from .detect import DetectParams, run_model
+    from .model import load_checkpoint
+
+    model, meta = load_checkpoint(Path(args.ckpt), "cuda" if _cuda() else "cpu")
+    names = list(load_cases()) if args.case == "all" else [args.case]
+    for name in names:
+        folder = Path(args.data) / name
+        try:
+            ds = load_stack(folder)
+        except FileNotFoundError as e:
+            print(f"[{name}] {e}", file=sys.stderr)
+            return 1
+        t = time.time()
+        classes, stats, layers = run_model(
+            model, meta, ds.vv_before.values, ds.vh_before.values, ds.vv_after.values,
+            ds.vh_after.values, ds.dem.values, ds.jrc_occurrence.values,
+            float(ds.attrs["resolution"]), DetectParams(),
+        )
+        save_classes(classes, ds.vv_after, folder / "model_flood.tif")
+        (folder / "model_stats.json").write_text(json.dumps(stats, indent=2))
+        title = load_cases().get(name, {}).get("title", name)
+        flood_overlay(ds, classes, stats, title, folder / "model.png", label="U-Net flood")
+        print(f"[{name}] flood {stats['flood_km2']:.2f} km² of {stats['valid_km2']:.0f} km² · "
+              f"steep {stats['masked_steep_fraction']:.0%} · {time.time() - t:.0f}s")
+    return 0
+
+
+def _cuda() -> bool:
+    import torch
+    return torch.cuda.is_available()
+
+
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252
         if hasattr(stream, "reconfigure"):
@@ -106,8 +139,12 @@ def main(argv=None) -> int:
     b = sub.add_parser("baseline", help="classical Otsu flood map for a fetched stack")
     b.add_argument("--case", required=True, help="case name, a custom --name, or 'all'")
     b.add_argument("--data", default=str(ROOT / "data"))
+    d = sub.add_parser("detect", help="U-Net flood map for a fetched stack")
+    d.add_argument("--case", required=True, help="case name, a custom --name, or 'all'")
+    d.add_argument("--data", default=str(ROOT / "data"))
+    d.add_argument("--ckpt", default=str(ROOT / "checkpoints" / "water_unet.pt"))
     args = ap.parse_args(argv)
-    return {"fetch": _fetch, "baseline": _baseline}[args.cmd](args)
+    return {"fetch": _fetch, "baseline": _baseline, "detect": _detect}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,9 @@ def quicklook(ds: xr.Dataset, path: Path) -> None:
     plt.close(fig)
 
 
-def flood_overlay(ds: xr.Dataset, classes: np.ndarray, stats: dict, title: str, path: Path) -> None:
+def flood_overlay(
+    ds: xr.Dataset, classes: np.ndarray, stats: dict, title: str, path: Path, label: str = "Baseline flood"
+) -> None:
     """VV-after backdrop with flood in red and permanent water in blue."""
     import matplotlib
     matplotlib.use("Agg")
@@ -88,7 +90,7 @@ def flood_overlay(ds: xr.Dataset, classes: np.ndarray, stats: dict, title: str, 
     axes[0].set_title(f"VV after {ds.attrs['after_date']} (dB)")
     axes[1].imshow(vva, cmap="gray", vmin=-25, vmax=0)
     axes[1].imshow(rgba)
-    axes[1].set_title(f"Baseline flood: {stats['flood_km2']:.1f} km²")
+    axes[1].set_title(f"{label}: {stats['flood_km2']:.1f} km²")
     axes[1].legend(
         handles=[Patch(color=(0.9, 0.1, 0.1), label="new flood water"),
                  Patch(color=(0.1, 0.35, 0.9), label="permanent water (JRC)"),
@@ -97,11 +99,12 @@ def flood_overlay(ds: xr.Dataset, classes: np.ndarray, stats: dict, title: str, 
     )
     for ax in axes:
         ax.axis("off")
-    tb, ta = stats["threshold_before"], stats["threshold_after"]
-    fig.suptitle(
-        f"{title}  ·  {ds.attrs['before_date']} → {ds.attrs['after_date']}  ·  "
-        f"water threshold {tb['value_db']:.1f} / {ta['value_db']:.1f} dB ({tb['method']} / {ta['method']})"
-    )
+    sub = f"{title}  ·  {ds.attrs['before_date']} → {ds.attrs['after_date']}"
+    if "threshold_before" in stats:
+        tb, ta = stats["threshold_before"], stats["threshold_after"]
+        sub += (f"  ·  water threshold {tb['value_db']:.1f} / {ta['value_db']:.1f} dB "
+                f"({tb['method']} / {ta['method']})")
+    fig.suptitle(sub)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
     plt.close(fig)

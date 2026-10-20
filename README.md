@@ -4,7 +4,7 @@
 
 TerraSignal compares free Sentinel-1 radar imagery over time to map floods and other surface change. Radar sees through clouds, which matters because floods arrive under monsoon skies. The pipeline works for any bounding box on the planet. Curated case studies cover India and the rest of the world.
 
-> Status: Phase 1 in progress (flood mapping). The fetch pipeline and the classical baseline are done; the learned model is next.
+> Status: Phase 1 in progress (flood mapping). Fetch, classical baseline and the U-Net water model are done; a hybrid detector and calibrated confidence are next.
 
 ## How it works
 
@@ -75,6 +75,7 @@ Slope comes from the Copernicus DEM smoothed to 30 m. The DEM is a *surface* mod
 
 ```bash
 terrasignal baseline --case all
+terrasignal detect --case all     # U-Net (needs checkpoints/water_unet.pt)
 ```
 
 | Case | Flood found | Valid area | Water threshold (before / after) | Masked as steep |
@@ -98,6 +99,56 @@ terrasignal baseline --case all
 - **Flash floods recede before the next pass.** Derna's flood had drained by 2023-09-12, so there is no open water to find. Mapping its damage needs a different signal (loss of radar coherence).
 - **The Wayanad control passes mostly because 97% of it is masked as steep.** That's weak evidence that the baseline doesn't over-fire; Sen1Floods11 gives a real test in 1.3.
 
+## Learned water model (U-Net)
+
+A U-Net with a ResNet34 encoder (ImageNet weights) takes VV and VH in dB and outputs water probability. It is trained on the 252 hand-labeled Sen1Floods11 chips (10 countries) and validated on 89 more. Training uses:
+- random 256 px crops, flips and rotations
+- **random ±2 dB brightness offsets**, because the training data is GEE σ⁰ while inference uses Planetary Computer RTC γ⁰ (measured over water, the two differ by 1–3 dB)
+- dropout before the output head, which MC-dropout confidence in 1.4 relies on
+
+Training took 48 min for 80 epochs on a GTX 1650. The best checkpoint came at epoch 44 (validation IoU 0.691), and later epochs overfit ([log](docs/train_log_water_unet.csv)).
+
+> **GTX 16-series note:** fp16 mixed precision returns NaN on these cards (no tensor cores), so `amp_ok()` turns it off there and everything runs in fp32. That's also 4× *faster* than the broken fp16 path.
+
+### Results: water IoU on hand-labeled chips the model never saw
+
+```bash
+python train/train_water.py --epochs 80
+python train/evaluate_water.py
+```
+
+| Region | Otsu baseline | U-Net | U-Net, inputs +1 dB |
+|---|---|---|---|
+| **Test, all 10 countries** | 0.470 | **0.669** | 0.670 |
+| Sri Lanka | 0.205 | **0.849** | 0.840 |
+| USA | 0.275 | **0.558** | 0.565 |
+| Somalia | 0.203 | **0.425** | 0.408 |
+| Paraguay | 0.399 | **0.631** | 0.650 |
+| Nigeria | 0.774 | **0.884** | 0.888 |
+| Mekong | 0.755 | **0.836** | 0.843 |
+| Spain | 0.647 | **0.721** | 0.725 |
+| Ghana | 0.459 | **0.529** | 0.528 |
+| Pakistan | 0.147 | **0.243** | 0.256 |
+| India | **0.691** | 0.672 | 0.670 |
+| **Bolivia (country never seen in training)** | **0.645** | 0.642 | 0.598 |
+
+Across the test set, precision rises from 0.72 to 0.82 and recall from 0.57 to 0.78. Full results are in [docs/results_water.json](docs/results_water.json).
+
+**What this does and doesn't show:**
+- The U-Net clearly beats thresholding on countries it trained on (9 of 10), and a +1 dB calibration shift doesn't hurt it there.
+- **In a brand-new country (Bolivia) it only ties the baseline, and the +1 dB shift costs it 0.04 IoU.** "Works anywhere" is not yet earned; more diverse training data (for example the 4,385 weakly labeled Sen1Floods11 chips) is the obvious next lever.
+- India is a narrow loss to Otsu.
+
+### On real events: complementary, not better
+
+**Assam:** the U-Net catches the Brahmaputra spreading over March sandbars, which the baseline missed (190 km² vs 60 km²).
+![Assam U-Net](docs/img/assam_2024_unet.png)
+
+**Vijayawada:** the U-Net **misses the flooded neighbourhoods** (3.4 km² vs the baseline's 42 km²). In that zone VV after the flood has a median of −13.5 dB, brighter than open water, because buildings and vegetation stick out of the water. VV dropped about 3 dB and VH about 4.6 dB, yet the model gives P(water) = 0.00. Sen1Floods11 labels come from optical imagery and mark open water, so the model learned "water = very dark".
+![Vijayawada U-Net](docs/img/vijayawada_2024_unet.png)
+
+Hence the next step: a **hybrid detector**, with U-Net open-water flood at high confidence plus change-only "probable flood" for water among buildings and vegetation at lower confidence.
+
 ## Quick start
 
 ```bash
@@ -118,7 +169,7 @@ Each run writes `data/<name>/` with one GeoTIFF per layer, `meta.json` (the scen
 - **Phase 1: flood mapping**
   - [x] 1.1 Fetch any AOI with same-orbit pairing, aligned DEM and permanent water
   - [x] 1.2 Otsu baseline with terrain and permanent-water masks
-  - [ ] 1.3 U-Net trained on Sen1Floods11, compared to the baseline per country
+  - [x] 1.3 U-Net trained on Sen1Floods11, compared to the baseline per country
   - [ ] 1.4 Calibrated confidence (MC dropout + temperature scaling)
   - [ ] 1.5 CLI and API that output COG, GeoJSON and stats
 - **Phase 2:** interactive map with a before/after swipe

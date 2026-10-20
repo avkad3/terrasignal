@@ -115,18 +115,33 @@ def run_baseline(
     slope = slope_degrees(dem, resolution)
     steep = ~(slope <= p.max_slope_deg)  # NaN slope counts as steep
 
-    excl = steep | perm
     t_b = split_otsu(db_b, exclude=steep)
     t_a = split_otsu(db_a, exclude=steep)
     water_b = valid & (db_b < t_b.value_db)
     water_a = valid & (db_a < t_a.value_db)
     dropped = (db_a - db_b) <= -p.min_drop_db
 
-    flood = water_a & ~water_b & dropped & ~excl & valid
-    px_area = resolution * resolution
-    flood = remove_small(flood, int(np.ceil(p.min_area_m2 / px_area)))
+    classes, stats = compose_flood(water_b, water_a & dropped, valid, perm, steep, resolution, p.min_area_m2)
+    stats.update(threshold_before=asdict(t_b), threshold_after=asdict(t_a), params=asdict(p))
+    return classes, stats
 
-    classes = np.full(vv_after.shape, NO_FLOOD, np.uint8)
+
+def compose_flood(
+    water_b: np.ndarray,
+    water_a: np.ndarray,
+    valid: np.ndarray,
+    perm: np.ndarray,
+    steep: np.ndarray,
+    resolution: float,
+    min_area_m2: float,
+) -> tuple[np.ndarray, dict]:
+    """Shared by every detector: flood = new water outside permanent water
+    and steep terrain, minus tiny clusters; returns class map and areas."""
+    flood = water_a & ~water_b & ~(steep | perm) & valid
+    px_area = resolution * resolution
+    flood = remove_small(flood, int(np.ceil(min_area_m2 / px_area)))
+
+    classes = np.full(valid.shape, NO_FLOOD, np.uint8)
     classes[steep & valid] = MASKED
     classes[perm & valid] = PERMANENT
     classes[flood] = FLOOD
@@ -139,8 +154,5 @@ def run_baseline(
         "water_after_km2": round(float((water_a & ~steep).sum()) * px_area / 1e6, 3),
         "valid_km2": round(n_valid * px_area / 1e6, 3),
         "masked_steep_fraction": round(float((steep & valid).sum()) / max(n_valid, 1), 4),
-        "threshold_before": asdict(t_b),
-        "threshold_after": asdict(t_a),
-        "params": asdict(p),
     }
     return classes, stats
