@@ -6,7 +6,7 @@ TerraSignal compares free Sentinel-1 radar imagery from before and after an even
 
 > **Status:** Phase 1 (flood mapping) is complete. Next is Phase 2, an interactive before/after map.
 
-![Pakistan 2022](docs/img/pakistan_2022_hybrid.png)
+![Vijayawada, India 2024](docs/img/vijayawada_2024_hybrid.png)
 
 ## Results at a glance
 
@@ -80,15 +80,17 @@ The API runs one worker, because one GPU and 8 GB of RAM fit one scene at a time
 
 | Case | Event | Open-water flood | Mean confidence | Probable |
 |---|---|---|---|---|
-| `pakistan_2022` | Indus floods near Manchar Lake | 755 km² | 81% | 6 km² |
-| `assam_2024` | Brahmaputra monsoon floods | 245 km² | 69% | 0 km² |
-| `vijayawada_2024` | Budameru urban floods (India) | 126 km² | 71% | 1 km² |
+| `vijayawada_2024` | Budameru urban floods, Andhra Pradesh (India) | 126 km² | 71% | 1 km² |
+| `assam_2024` | Brahmaputra monsoon floods, Assam (India) | 245 km² | 69% | 0 km² |
+| `wayanad_2024` | Landslide, Kerala (India; **control**: should find ~nothing) | 0.1 km² | 58% | 0 km² |
+| `pakistan_2022` | Indus floods near Manchar Lake (Pakistan) | 755 km² | 81% | 6 km² |
 | `emilia_2023` | Emilia-Romagna, Italy (**not in training**) | 12.8 km² | 78% | 0 km² |
 | `derna_2023` | Libya dam-break flash flood (hard case) | 1.7 km² | 56% | 0 km² |
-| `wayanad_2024` | Landslide (**control**: should find ~nothing) | 0.1 km² | 58% | 0 km² |
 
-**Vijayawada:** the flooded north-west neighbourhoods are mapped as open water. The scattered field-shaped patches to the south-west and east are most likely **rice paddies flooded for transplanting**, which radar can't tell from flood water. The 126 km² overstates the flood, and the run's summary warns about this.
-![Vijayawada](docs/img/vijayawada_2024_hybrid.png)
+**Vijayawada** (map at the top): the flooded north-west neighbourhoods are mapped as open water. The scattered field-shaped patches to the south-west and east are most likely **rice paddies flooded for transplanting**, which radar can't tell from flood water. The 126 km² overstates the flood, and the run's summary warns about this.
+
+**Pakistan:** open water fills the inundated Indus floodplain and the overflowing fringe of Manchar Lake.
+![Pakistan 2022](docs/img/pakistan_2022_hybrid.png)
 
 **Emilia-Romagna** (a region and country the model never trained on): the inundated block north-east of Lugo is mapped completely. The old GEE-trained model gave it P(water) ≈ 0.01.
 ![Emilia-Romagna](docs/img/emilia_2023_hybrid.png)
