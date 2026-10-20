@@ -1,0 +1,37 @@
+# Curated case studies. bbox = [west, south, east, north] in degrees.
+# Dates are targets; the nearest same-orbit Sentinel-1 passes are used.
+
+assam_2024:
+  title: Brahmaputra floods, Assam (India)
+  bbox: [92.10, 26.25, 92.50, 26.55]
+  before: 2024-03-01
+  after: 2024-07-04
+  kind: flood
+
+chennai_2023:
+  title: Cyclone Michaung floods, Chennai (India)
+  bbox: [80.15, 12.90, 80.30, 13.15]
+  before: 2023-11-20
+  after: 2023-12-05
+  kind: flood
+
+pakistan_2022:
+  title: Indus floods near Manchar Lake, Sindh (Pakistan)
+  bbox: [67.55, 26.25, 68.00, 26.60]
+  before: 2022-06-01
+  after: 2022-08-30
+  kind: flood
+
+derna_2023:
+  title: Storm Daniel dam-break flood, Derna (Libya)
+  bbox: [22.55, 32.70, 22.70, 32.80]
+  before: 2023-09-01
+  after: 2023-09-12
+  kind: flood  # flash flood in a narrow urban wadi: a deliberately hard case
+
+wayanad_2024:
+  title: Mundakkai-Chooralmala landslide, Wayanad (India)
+  bbox: [76.10, 11.43, 76.20, 11.52]
+  before: 2024-07-20
+  after: 2024-08-01
+  kind: landslide  # not a flood; checks the detector does not over-fire
